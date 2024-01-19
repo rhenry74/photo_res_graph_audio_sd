@@ -1,6 +1,5 @@
 {
     "files.associations": {
         "*.tcc": "cpp"
-    },
-    "cmake.configureOnOpen": true
+    }
 }
