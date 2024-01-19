@@ -8,10 +8,12 @@
 //#include <SPI.h>
 #include <SD.h>
 
-LGFX lcd;  // declare display variable
+static LGFX screen;  // declare display variable
+static LGFX_Sprite lcd(&screen); 
 
 #define ADC_PIN 34
-#define CHARGING_PIN 22
+#define TRIGGER_PIN 22
+#define ECHO_PIN  27
 #define DAC_PIN  26
 
 #define SDMOSI 23
@@ -19,6 +21,19 @@ LGFX lcd;  // declare display variable
 #define SDCLK 18
 #define SDCS 5
 #define SDSPEED 27000000
+
+ #define MY_TFT_BLACK 0
+  #define MY_TFT_BLUE 1
+  #define MY_TFT_GREEN 2
+  #define MY_TFT_RED 3
+  #define MY_TFT_GOLD 4
+  #define MY_TFT_NAVY 5 
+  #define MY_TFT_YELLOW 6
+  #define MY_TFT_MAROON 7
+  #define MY_TFT_CYAN 8
+  #define MY_TFT_WHITE 9
+  #define MY_TFT_DARKGRAY 10
+  #define MY_TFT_LIGHTGRAY 11
 
 class LCDRect
 {
@@ -30,9 +45,9 @@ class LCDRect
     int c;
     String text;
     bool third = false;
-    LGFX* lcd;
+    LGFX_Sprite* lcd;
     
-    LCDRect(LGFX* ldcInstance)
+    LCDRect(LGFX_Sprite* ldcInstance)
     {
       lcd = ldcInstance;
     }
@@ -40,9 +55,9 @@ class LCDRect
     void Draw()
     {    
       lcd->fillRect(x,y,w,h,c);
-      lcd->drawRect(x,y,w,h,TFT_DARKGRAY);
-      lcd->drawRect(x+1,y+1,w-2,h-2,TFT_WHITE);
-      lcd->drawRect(x+2,y+2,w-4,h-4,TFT_LIGHTGRAY);
+      lcd->drawRect(x,y,w,h,MY_TFT_DARKGRAY);
+      lcd->drawRect(x+1,y+1,w-2,h-2,MY_TFT_WHITE);
+      lcd->drawRect(x+2,y+2,w-4,h-4,MY_TFT_LIGHTGRAY);
       if (text.length() > 0)
       {        
         if (third)
@@ -214,7 +229,7 @@ String alert = "";
 
 void displayError(String err) 
 {
-  lcd.fillRect(0, 0, chartWidth, tempAreaHeight, TFT_BLACK);
+  lcd.fillRect(0, 0, chartWidth, tempAreaHeight, MY_TFT_BLACK);
   lcd.setCursor(62, 12);
   lcd.printf(err.c_str());
   alert = err;
@@ -223,51 +238,9 @@ void displayError(String err)
 bool ui_drawn = false;
 void clearDisplay() 
 {
-  //lcd.fillRect(0, 0, chartWidth, chartHeight + tempAreaHeight, TFT_BLACK);
-  lcd.clearDisplay(TFT_BLACK);
+  //lcd->fillRect(0, 0, chartWidth, chartHeight + tempAreaHeight, MY_TFT_BLACK);
+  lcd.clearDisplay(MY_TFT_BLACK);
   ui_drawn = false;
-}
-
-void displayBar(int val, bool charging) 
-{
-  int bar_w = lcd.width() - 10;
-  int bar_h = 12;
-  int bar_x = 5;
-  int bar_y = lcd.height() - bar_h - 4;
-
-  String s = ",";
-  s = val + s;
-  s = s + charging;
-  lcd.drawString(s.c_str(), bar_x + bar_w / 2, bar_y - 12);
-
-  int bar_color = TFT_PINK;
-  if (!charging)
-  {
-    bar_color = TFT_MAROON;
-  }
-  lcd.drawLine(bar_x, bar_y, bar_x + bar_w, bar_y, bar_color);
-  lcd.drawLine(bar_x, bar_y, bar_x, bar_y + bar_h, bar_color);
-  lcd.drawLine(bar_x, bar_y + bar_h, bar_x + bar_w, bar_y + bar_h, bar_color);
-  lcd.drawLine(bar_x + bar_w, bar_y, bar_x + bar_w, bar_y + bar_h, bar_color);
-  lcd.drawLine(bar_x + bar_w + 1, bar_y + 4, bar_x + bar_w + 1, bar_y + bar_h - 4, bar_color);
-  lcd.drawLine(bar_x + bar_w + 2, bar_y + 4, bar_x + bar_w + 2, bar_y + bar_h - 4, bar_color);
-  
-  int no_of_segments = (bar_w - 4) / 5; //5 is a pretty small segment
-  int segment_range = 0xFFF / no_of_segments;
-  for (int segment = 0; segment < no_of_segments; segment++)
-  {
-    int compare = segment_range * (segment + 1);
-    //Serial.println(compare);
-    if (val > compare)
-    {
-      int seg_w = 5;
-      int seg_x = bar_x + (seg_w * segment + 2 + segment);
-      int seg_h = bar_h - 4;
-      int seg_y = bar_y + 3;
-      lcd.fillRect(seg_x, seg_y, seg_w, seg_h, TFT_ORANGE );
-    }
-  }
-
 }
 
 float high_alarm = 200;
@@ -275,6 +248,9 @@ float low_alarm = 75;
 LCDRect high_button(&lcd);
 LCDRect low_button(&lcd);
 bool highAlarm = false;
+
+float maxVal = 0;
+float minVal = 1000;
 
 void addVal(float val)
 {
@@ -290,13 +266,9 @@ void addVal(float val)
     alert = "HIGH";
     highAlarm=true;
   }
-  else if (val < low_alarm)
-  {
-    alert = "LOW";
-  }
   else
   {
-    alert = "";
+    alert = "LOW";
     highAlarm=false;
   }
 }
@@ -305,10 +277,10 @@ LCDRect timer(&lcd);
 
 void displayGraph() 
 {  
-  int bottom = lcd.height();
+  int bottom = screen.height();
 
   for (int i = 0; i < chartWidth; i++) {
-    lcd.drawLine(chartWidth - i, bottom - graphVals[i], chartWidth - i, bottom, TFT_GREEN);
+    lcd.drawLine(chartWidth - i, bottom - graphVals[i], chartWidth - i, bottom, MY_TFT_GREEN);
   }
 
   long now = millis() - timer_initial;
@@ -330,35 +302,41 @@ void displayGraph()
   if (hrs_str.length() == 1) {
     hrs_str = String("0") + hrs_str;
   }
-  String time_str = String("Recorder: ");
+  String time_str = String("Up Time: ");
   time_str.concat(hrs_str);
   time_str.concat(":");
   time_str.concat(min_str);
   time_str.concat(":");
   time_str.concat(sec_str);
   
-  timer.w = 200;
+  timer.w = 190;
   timer.h = 32;
-  timer.x = lcd.width() / 2 - timer.w / 2;
+  timer.x = screen.width() / 2 - timer.w / 2;
   timer.y = 2;  
   timer.text = time_str;
-  timer.c = TFT_NAVY;
+  timer.c = MY_TFT_NAVY;
   timer.Draw();
 
   int chart_inc = 50;
-  int line_pos = lcd.height() - chart_inc;
+  int line_pos = screen.height() - chart_inc;
   while (line_pos > chart_inc) {
-    lcd.drawLine(0, line_pos, chartWidth, line_pos, TFT_CYAN);
-    lcd.drawRightString(String(lcd.height() - line_pos).c_str(), chartWidth - 5, line_pos);
+    lcd.drawLine(0, line_pos, chartWidth, line_pos, MY_TFT_CYAN);
+    lcd.drawRightString(String(screen.height() - line_pos).c_str(), chartWidth - 5, line_pos);
     line_pos = line_pos - chart_inc;
   }
 
-  lcd.setTextSize(1.2);
-  lcd.drawRightString(String(graphVals[0]).c_str(), chartWidth / 2 + 40, 89);
-  //lcd.drawEllipse(chartWidth / 2 + 48, 87, 4, 4, TFT_WHITE);  not a degree
-
-  lcd.drawString( alert,lcd.width() / 2, 140);
+  String val("Max: ");
+  val = val + String(maxVal);
+  lcd.drawCenterString(val, chartWidth / 2, 48);
+  val = String("Min: ");
+  val = val + String(minVal);
+  lcd.drawCenterString(val, chartWidth / 2, 68);
+  lcd.setTextSize(1.4);
+  //lcd.drawRightString(String(graphVals[0]).c_str(), chartWidth / 2 + 40, 95);
+  lcd.drawCenterString(String(graphVals[0]).c_str(), chartWidth / 2, 120);
+  //lcd.drawEllipse(chartWidth / 2 + 48, 87, 4, 4, MY_TFT_WHITE);  not a degree
   lcd.setTextSize(1);
+  lcd.drawString( alert,screen.width() / 2, 150);  
 }
 
 void testSD()
@@ -391,7 +369,7 @@ void testSD()
 }
 
 SPIClass sdSPI(HSPI);
-double factor = 0.5;
+double factor = 1;
 
 void setup(void) {
 
@@ -412,23 +390,40 @@ void setup(void) {
   Serial.print(Freq);
   Serial.println(" Hz");
 
-  lcd.init();
-  lcd.setRotation(1);
-  lcd.fillScreen(TFT_BLACK);
-  
+  screen.init();
+  screen.setRotation(1);
+
+  lcd.setColorDepth(lgfx::palette_4bit);
+  lcd.createSprite(screen.width(), screen.height()); 
+  lcd.setPaletteColor(MY_TFT_BLACK, TFT_BLACK); 
+  lcd.setPaletteColor(MY_TFT_BLUE, TFT_BLUE); 
+  lcd.setPaletteColor(MY_TFT_GREEN, TFT_GREEN);
+  lcd.setPaletteColor(MY_TFT_RED, TFT_RED);
+  lcd.setPaletteColor(MY_TFT_GOLD, TFT_GOLD);
+  lcd.setPaletteColor(MY_TFT_NAVY, TFT_NAVY); 
+  lcd.setPaletteColor(MY_TFT_YELLOW, TFT_YELLOW);
+  lcd.setPaletteColor(MY_TFT_MAROON, TFT_MAROON);
+  lcd.setPaletteColor(MY_TFT_CYAN, TFT_CYAN);
+  lcd.setPaletteColor(MY_TFT_WHITE, TFT_WHITE);
+  lcd.setPaletteColor(MY_TFT_DARKGRAY, TFT_DARKGRAY);
+  lcd.setPaletteColor(MY_TFT_LIGHTGRAY, TFT_LIGHTGRAY);
+
+  lcd.fillScreen(MY_TFT_BLUE);  
   lcd.setCursor(10, 10);
 
   //lcd.setTextSize(2);
   lcd.setTextDatum(lgfx::textdatum::CC_DATUM);
   lcd.setFont(&lgfx::v1::fonts::DejaVu18);
-  //lcd.setTextColor(TFT_WHITE, TFT_TRANSPARENT);
+  //lcd.setTextColor(MY_TFT_WHITE, MY_TFT_TRANSPARENT);
   
-  chartWidth = lcd.width();
-  chartHeight = lcd.height() - tempAreaHeight;
-  lcd.drawLine(0, 0, chartWidth, 0, TFT_GOLD);
-  lcd.drawLine(0, 0, 0, chartHeight, TFT_GOLD);
-  lcd.drawLine(chartWidth, chartHeight, 0, chartHeight, TFT_GOLD);
-  lcd.drawLine(chartWidth, chartHeight, chartWidth, 0, TFT_GOLD);
+  chartWidth = screen.width();
+  Serial.print("width: ");
+  Serial.println(chartWidth);
+  chartHeight = screen.height() - tempAreaHeight;
+  lcd.drawLine(0, 0, chartWidth, 0, MY_TFT_GOLD);
+  lcd.drawLine(0, 0, 0, chartHeight, MY_TFT_GOLD);
+  lcd.drawLine(chartWidth, chartHeight, 0, chartHeight, MY_TFT_GOLD);
+  lcd.drawLine(chartWidth, chartHeight, chartWidth, 0, MY_TFT_GOLD);
 
   graphVals = (float*)malloc(sizeof(float) * chartWidth);
   int i = 0;
@@ -443,14 +438,12 @@ void setup(void) {
   //analogSetCycles(4);
   analogSetAttenuation(ADC_0db);
 
-  pinMode(CHARGING_PIN, INPUT);
-
-  factor = lcd.height() / (double) 0xFFF; //12 bit AtoD 
+  //factor = screen.height() / (double) 200; //200cm or 2m 
   Serial.print("ADC to screen heght factor=");
   Serial.println(factor);
 
-  //pinMode(SDCS, OUTPUT);
-  //digitalWrite(SDCS, LOW);
+  pinMode(SDCS, OUTPUT);
+  digitalWrite(SDCS, LOW);
   Serial.println("Initializing SPI HSPI_HOST for SD...");
 
   sdSPI.begin(SDCLK, SDMISO, SDMOSI, SDCS);
@@ -458,15 +451,12 @@ void setup(void) {
   Serial.println("Initializing SD card...");  
   if (!SD.begin(SDCS, sdSPI, SDSPEED)) {
     Serial.println("init failed!");
-    while (1)
-      ;
   }
   Serial.println("init done.");
 
   uint8_t cardType = SD.cardType();
   if (cardType == CARD_NONE) {
     Serial.println("No SD card attached");
-    return;
   }
 
   Serial.print("SD Card Type: ");
@@ -480,7 +470,10 @@ void setup(void) {
     Serial.println("UNKNOWN");
   }
 
+  screen.startWrite();
   lcd.printf("Initializing Audio");
+  lcd.pushSprite(0, 0);
+
   pinMode(22, OUTPUT);
   audio_help_initialize(DAC_PIN);
   //play a test tone at start up
@@ -497,10 +490,15 @@ void setup(void) {
   audio_help_setFrequency(2000);
   delay(250);
   Serial.println("test tone volume 0");
-  audio_help_set_waveform("square", 0); 
+  audio_help_set_waveform("sine", 0); 
   delay(500);
 
   testSD();
+
+  Serial.println("ultrasonic sensor");
+  // Define inputs and outputs
+  pinMode(TRIGGER_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
 
 }
 
@@ -538,11 +536,11 @@ void manageUI()
   {
     LCDRect prompt(&lcd);
     prompt.x = 30;
-    prompt.w = lcd.width() - 60;
+    prompt.w = screen.width() - 60;
     prompt.y = 80;
-    prompt.h = lcd.height() - 120;
+    prompt.h = screen.height() - 120;
     prompt.text = ui_question;
-    prompt.c = TFT_BLUE;
+    prompt.c = MY_TFT_BLUE;
     prompt.third = true;
     prompt.Draw();
 
@@ -553,7 +551,7 @@ void manageUI()
     left_button.y = prompt.y + prompt.h - 10 - prompt.h / 3;
     left_button.h = prompt.h / 3 - 10;
     left_button.text = "Record";
-    left_button.c = TFT_NAVY;
+    left_button.c = MY_TFT_NAVY;
     left_button.Draw();
 
     center_button.x = prompt.x + + prompt.w / 2 - button_width / 2;
@@ -561,7 +559,7 @@ void manageUI()
     center_button.y = prompt.y + prompt.h - 10 - prompt.h / 3;
     center_button.h = prompt.h / 3 - 10;
     center_button.text = "Play";
-    center_button.c = TFT_NAVY;
+    center_button.c = MY_TFT_NAVY;
     center_button.Draw();
 
     right_button.x = prompt.x + prompt.w - 1 - button_width;
@@ -569,7 +567,7 @@ void manageUI()
     right_button.y = prompt.y + prompt.h - 10 - prompt.h / 3;
     right_button.h = prompt.h / 3 - 10;
     right_button.text = "Idle";
-    right_button.c = TFT_NAVY;
+    right_button.c = MY_TFT_NAVY;
     right_button.Draw();
   }
 
@@ -580,28 +578,28 @@ void displayAlarms()
 {
   int x = 5;
   int y = 0;
-  int h = lcd.height();
+  int h = screen.height();
   int w = 60;
 
-  lcd.fillRect(x,y,w,h,TFT_DARKGRAY);
-  lcd.drawRect(x+1,y+1,w-2,h-2,TFT_WHITE);
-  lcd.drawRect(x+2,y+2,w-4,h-4,TFT_LIGHTGRAY);
+  lcd.fillRect(x,y,w,h,MY_TFT_DARKGRAY);
+  lcd.drawRect(x+1,y+1,w-2,h-2,MY_TFT_WHITE);
+  lcd.drawRect(x+2,y+2,w-4,h-4,MY_TFT_LIGHTGRAY);
 
   int button_height = 32;
   high_button.x = x;
   high_button.w = w;
-  high_button.y = lcd.height() - high_alarm - button_height / 2;
+  high_button.y = screen.height() - high_alarm - button_height / 2;
   high_button.h = button_height;
   high_button.text = (int) high_alarm;
-  high_button.c = (ui_mode == UI_MOVE_HIGH_ALARM) ? TFT_YELLOW : TFT_NAVY;
+  high_button.c = (ui_mode == UI_MOVE_HIGH_ALARM) ? MY_TFT_YELLOW : MY_TFT_MAROON;
   high_button.Draw();
 
   low_button.x = x;
   low_button.w = w;
-  low_button.y = lcd.height() - low_alarm - button_height / 2;
+  low_button.y = screen.height() - low_alarm - button_height / 2;
   low_button.h = button_height;
   low_button.text = (int) low_alarm;
-  low_button.c = (ui_mode == UI_MOVE_LOW_ALARM) ? TFT_YELLOW : TFT_NAVY;
+  low_button.c = (ui_mode == UI_MOVE_LOW_ALARM) ? MY_TFT_YELLOW : MY_TFT_NAVY;
   low_button.Draw();
 }
 
@@ -640,14 +638,51 @@ String processString()
   return String("");
 }
 
+long duration;
+int distance;
+int old_distance;
+
+int ReadDistance()
+{
+  // Clear the trigPin by setting it LOW:
+  digitalWrite(TRIGGER_PIN, LOW);
+  
+  delayMicroseconds(5);
+
+ // Trigger the sensor by setting the trigPin high for 20 microseconds:
+  digitalWrite(TRIGGER_PIN, HIGH);
+  delayMicroseconds(20);
+  digitalWrite(TRIGGER_PIN, LOW);
+  
+  // Read the echoPin. pulseIn() returns the duration (length of the pulse) in microseconds:
+  duration = pulseIn(ECHO_PIN, HIGH);
+  
+  // Calculate the distance:
+  distance = duration*0.034/2;
+  
+  // Print the distance on the Serial Monitor
+  if (distance != old_distance)
+  {
+    Serial.print("Distance = ");
+    Serial.print(distance);
+    Serial.println(" cm");
+    old_distance = distance;
+  }
+  
+  delay(100);
+
+  return distance;
+}
+
 float getReading()
 {
   if (recordVar.idle || recordVar.recording)
   {
-    readings[reading_index++] =  analogRead(ADC_PIN);
-    int reading = readings[0] + readings[1] + readings[2] + readings[3] + readings[4];
-    reading = reading / 5;  
-    float factored = reading * factor;
+    readings[reading_index] =  ReadDistance();
+    reading_index++;
+    if (reading_index == 5) reading_index = 0; 
+    float reading = readings[0] + readings[1] + readings[2] + readings[3] + readings[4];
+    float factored = (reading / 5) * factor;
     if (recordVar.recording)
     {
       if (recordVar.recordFile)
@@ -677,35 +712,41 @@ float getReading()
 float last_factored=0;
 void loop() {
 
-  if (millis() - last_readstamp > 20) 
+  if (millis() - last_readstamp > 100) 
   { 
     float factored = getReading();
     addVal(factored);
-    if (reading_index == 6) reading_index = 0; 
-    last_readstamp = millis();
-
+    if (factored > maxVal)
+    {
+      maxVal = factored;
+    }
+    if (factored < minVal)
+    {
+      minVal = factored;
+    }
     if (last_factored != factored)
     {
-      if (factored > 5)
+      if (factored > 5 && highAlarm == false)
       {
-      audio_help_setFrequency(5000 * (factored / 250)); 
+        audio_help_setFrequency(5000 * (factored / 250)); 
       }
       else
       {
-        audio_help_setFrequency(0); 
+        audio_help_setFrequency(0);
       }     
       last_factored = factored;
     }
+    last_readstamp = millis();  
+
   }
 
-  if (millis() - last_timestamp > 250) 
+  if (millis() - last_timestamp > 400) 
   {   
+    
     //int reading = (readings[0] + readings[1] + readings[2] + readings[3] + readings[4]) / 5;
     
     //scale the reading to the chart's vertical height
     //addVal(reading * factor);
-
-    int charging = digitalRead(CHARGING_PIN);
 
     // if (reading != oldReading)
     // {
@@ -721,7 +762,6 @@ void loop() {
 
     clearDisplay();
     displayGraph();
-    displayBar(reading, charging);
     displayAlarms();
 
     last_timestamp = millis();
@@ -740,7 +780,7 @@ void loop() {
     }
   }
 
-  if ( lcd.getTouch(&x, &y)) {
+  if ( screen.getTouch(&x, &y)) {
     // Serial.print(x);
     // Serial.print(",");
     // Serial.print(y);
@@ -810,40 +850,42 @@ void loop() {
           recordVar.idle = true;
           Serial.println("idle");
         }
+
+        maxVal = 0;
+        minVal = 1000;
         displayGraph();
       }
     }
     else if (ui_mode == UI_MOVE_HIGH_ALARM)
     {
-      int newAlarm = lcd.height() - y;
-      if (newAlarm > low_alarm)
-      {
-        high_alarm = newAlarm;
-      }
+      high_alarm = screen.height() - y;
       displayAlarms();
       ui_mode_time = millis();
       delay(50);
+      last_factored = 0;//get it to evaluate the alarm without reading change
     }
     else if (ui_mode == UI_MOVE_LOW_ALARM)
     {
-      int newAlarm = lcd.height() - y;
-      if (newAlarm < high_alarm)
-      {
-        low_alarm = newAlarm;
-        if (low_alarm == 0)
-          { low_alarm = 1;}
-        audio_help_set_waveform("sine", low_alarm / 200);
-        for (byte widx = 0; widx < audio_help_wave_buf_size; widx++)
-        {
-            Serial.print("wave buffer ");
-            Serial.print(widx);
-            Serial.print("=");
-            Serial.println(audio_help_wave_buf[widx]);
-        }
+      low_alarm = screen.height() - y;
+      
+      if (low_alarm == 0)
+      { 
+        low_alarm = 1;
       }
+      audio_help_set_waveform("sine", low_alarm / 240);
+      for (byte widx = 0; widx < audio_help_wave_buf_size; widx++)
+      {
+          Serial.print("wave buffer ");
+          Serial.print(widx);
+          Serial.print("=");
+          Serial.println(audio_help_wave_buf[widx]);
+      }
+      
       displayAlarms();
       ui_mode_time = millis();
       delay(50);
     }    
   }
+
+  lcd.pushSprite(0, 0);
 }
